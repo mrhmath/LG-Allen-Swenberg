@@ -20,3 +20,5 @@ If you use this data or script in your research, please cite our preprint.
       note = {\href{https://arxiv.org/abs/math/2605.15515}{arXiv:2605.15515}},
 }
 ```
+## Acknowledgments
+BMK would like to thank Dartmouth College for its hospitality during his stay in Hanover in February 2026, when this project was initiated. MH was partially supported through the NSF-RTG grant \#DMS-2135960. The work of BMK is partially supported by the SNSF research program NCCR The Mathematics of Physics (SwissMAP), and the SNSF grant no. 200021-232258. This work was supported in part through computational resources and services provided by the Institute for Cyber-Enabled Research at Michigan State University.
