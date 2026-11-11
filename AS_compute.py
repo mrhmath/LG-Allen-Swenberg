@@ -1,9 +1,13 @@
 #%% Preamble
+from IPython.display import display, Math, Latex
 from sympy import * #load symbolic library
 from sympy.polys.matrices import DomainMatrix
 import os
 import pickle
 
+# =========================
+# FOLDERS/PKLs
+# =========================
 cwd = os.getcwd()
 pkl_dir = os.path.join(cwd, "pkls")
 
@@ -16,18 +20,6 @@ def disk_load(fname):
 def disk_save(fname, obj):
     with open(fname, "wb") as f:
         pickle.dump(obj, f)
-
-q  = Symbol('q')
-s  = Symbol('s')
-
-def sparseM(x):
-    return  ImmutableSparseMatrix(x)
-
-def KP(*factors):
-    prod = Matrix([[1]])
-    for x in factors:
-        prod = kronecker_product(prod,x)
-    return  sparseM(prod)
 
 def saved_computation(name, function, args=None):
     if args is None:
@@ -43,6 +35,51 @@ def saved_computation(name, function, args=None):
     X = function(*args)
     disk_save(fname, X)
     return X
+
+# =========================
+# SYMBOLS
+# =========================
+q  = Symbol('q')
+s  = Symbol('s')
+x=symbols('x0:4')
+y=symbols('y0:4')
+
+def totensor(x):
+    return (x//4,x%4)
+
+def condense(R):
+    C = zeros(4)
+    for j in range(16):
+        for i in range(16):
+            xind,yind = totensor(i)
+            entry = factor(R[i,j])
+            C[totensor(j)] += expand(numer(entry))/expand(denom(entry))*x[xind]*y[yind]
+    return C
+
+# =========================
+# WORKER FUNCTIONS
+# =========================
+def sparseM(x):
+    return  ImmutableSparseMatrix(x)
+
+def KP(*factors):
+    prod = Matrix([[1]])
+    for x in factors:
+        prod = kronecker_product(prod,x)
+    return  sparseM(prod)
+
+def get_LT(M, x):
+    def leading_term(expr):
+        terms = Add.make_args(expand(expr))
+        degrees = [t.as_powers_dict().get(x, 0) for t in terms]
+        max_degree = max(degrees)
+
+        return Add(*[
+            t for t, d in zip(terms, degrees)
+            if d == max_degree
+        ])
+
+    return M.applyfunc(leading_term)
 
 dim = 4
 fname = os.path.join(cwd,'pkls', 'LG_RT_data.pkl')
@@ -67,12 +104,11 @@ def filler(left_strands, bottom_width, elementary_tangle):
 def matrix_scalar(M):
     M = simplify(M)
     m = M[0,0]
-    if M == m*eye(*shape(M)):
-        return m
-    print("Matrix is not scalar")
+    assert M == m*eye(*shape(M))
+    return m
 
 double = RT['l']*RT['r']
-double2 = (double.to_DM()**2).to_Matrix()
+doublei = (double.to_DM().inv()).to_Matrix()
 cupcap = RT['cl']*RT['er']
 crL = filler(0,1,'cr')
 elL = filler(0,3,'el')
@@ -82,9 +118,9 @@ crR = crU
 elR = filler(1,3,'el')
 
 HR = matrix_scalar(elR*KP(double, eye(4))*crR)
-HHR = matrix_scalar(elR*KP(double2, eye(4))*crR)
+# HHR = matrix_scalar(elR*KP(double2, eye(4))*crR)
 
-rels = Matrix([[0,1,HR], [1,0,1], [HR,1,HHR]])
+rels = Matrix([[0,1,HR], [1,0,1], [q**2*HR,1,0]])
 relsi = rels.inv()
 
 name_to_index = {'id':0, 'cupcap':1, 'double':2}
@@ -92,43 +128,49 @@ name_to_diagram = {'id':eye(16), 'cupcap':cupcap, 'double':double}
 basis = ['id', 'cupcap', 'double']
 
 def tangle_2_cmpnts(M):
-    ML = elL*KP(eye(4),M)*crL
+    ML = elR*KP(M, eye(4))*crR
     ml = matrix_scalar(ML)
 
     MU = erU * KP(M,eye(4)) * crU
     mu = matrix_scalar(MU)
 
-    MD = elL*KP(eye(4),double*M)*crL
+    MD = elR*KP(doublei*M, eye(4))*crR
     md = matrix_scalar(MD)
 
     v = Matrix([ml, mu, md])
     T = simplify(relsi*v)
     check = T[0]*eye(16)+ T[1]*cupcap + T[2]*double
-    if simplify(expand(M-check)) == zeros(*shape(M)):
-        return T
-    print("Error")
-    return
+    assert simplify(expand(M-check)) == zeros(*shape(M))
+    return T
 
 
 fname = os.path.join(cwd, 'pkls',"trefoil_6twists.pkl")
+# tangle = "0cl, 1cr, 3li, 2u, 4d, 3ri, 3li, 2u, 4d, 3ri, 3li, 2u, 4d, 3ri, 1el, 0er, 0r, 0l, 0r, 0l, 0r, 0l "
+# bottom_width = 2
 trefoiltwist = disk_load(fname).to_DM()
 
 fname = os.path.join(cwd, 'pkls',"pclasp.pkl")
+# tangle = "1cl, 0u, 2d, 1er"
+# bottom_width = 2
 pclasp = disk_load(fname).to_DM()
 
 fname = os.path.join(cwd, 'pkls',"mclasp.pkl")
+# tangle = "1cl, 0ui, 2di, 1er"
+# bottom_width = 2
 mclasp = disk_load(fname).to_DM()
 
-fname = os.path.join(cwd, 'pkls',"cr_at_left_1_bottom_2.pkl")
-bottomcr = disk_load(fname)
-fname = os.path.join(cwd, 'pkls',"el_at_left_1_bottom_4.pkl")
-topel = disk_load(fname)
-
 fname = os.path.join(cwd, 'pkls',"AS_top.pkl")
+# tangle = '1r,0er'
+# bottom_width = 3
 AS_top = disk_load(fname)
 
 fname = os.path.join(cwd, 'pkls',"AS_bottom.pkl")
+# tangle = '1cl, 2cr, 1r, 0r,0l,1l,2el'
+# bottom_width = 1
 AS_bottom = disk_load(fname)
+
+bottomcr = filler(1,2,'cr')
+topel = filler(1,4,'el')
 
 # ttp = (pclasp*trefoiltwist).to_Matrix()
 # ttm = (mclasp*trefoiltwist).to_Matrix()
@@ -163,14 +205,11 @@ def join_AB(A,B):
 fatgraph = join_AB(ttp_components,ttm_components)
 
 
-final_tangle_id = (s - 1)*(s + 1)*(q*s - 1)*(q*s + 1)*(q**4*s**8 + q**4*s**4 + q**2*s**4 + 1)/(q**6*s**6)
-final_tangle_cupcap = (s - 1)**2*(s + 1)**2*(q*s - 1)**2*(q*s + 1)**2/(q**4*s**4)
-final_tangle_double = (s - 1)*(s + 1)*(q*s - 1)*(q*s + 1)*(3*q**6*s**8 - 4*q**6*s**6 + 3*q**6*s**4 + q**4*s**8 - 4*q**4*s**6 + 7*q**4*s**4 - 4*q**4*s**2 + 2*q**2*s**4 - 4*q**2*s**2 + 3*q**2 + 1)/(q**8*s**6)
-
-name_to_final_tangle = {'id':final_tangle_id, 'cupcap':final_tangle_cupcap, 'double':final_tangle_double}
 final_tangle = zeros(3,1)
 for a in basis:
-    final_tangle[name_to_index[a]] = simplify(name_to_final_tangle[a])
+    M = AS_top*KP(eye(4),name_to_diagram[a])*AS_bottom
+    assert simplify(M[0,0]*eye(4)-M) == zeros(4)
+    final_tangle[name_to_index[a]] = simplify(M[0,0])
 
 def AS_link(n):
     components = fatgraph
@@ -184,4 +223,37 @@ AS_link2 = saved_computation('AS_link', AS_link, 2)
 AS_link3 = saved_computation('AS_link', AS_link, 3)
 AS_link4 = saved_computation('AS_link', AS_link, 4)
 
+'''
+Print results:
+'''
+cc = condense(cupcap)
+display(Math(rf"cupcap=({latex(factor(cc[0,0]))}){latex(simplify(cc/cc[0,0]))}"))
 
+doub = condense(double)
+display(Math(rf"double={latex(doub)}"))
+
+collectttp = ttp_components.applyfunc(lambda x: collect(x,s))
+display(Math(rf"TT^+={latex(ttp_components)}"))
+
+collectttm = ttm_components.applyfunc(lambda x: collect(x,s))
+display(Math(rf"TT^-={latex(ttm_components)}"))
+
+for a in basis:
+    for b in basis:
+        X=latex(join_AB(eye(3)[:,name_to_index[a]],eye(3)[:,name_to_index[b]]).applyfunc(factor).applyfunc(lambda x: collect(x,s)))
+        display(Math(rf"\text{{{a}}}\boxtimes\text{{{b}}}={X}"))
+
+for a in basis:
+    X=latex(collect(final_tangle[name_to_index[a]],s))
+    display(Math(rf"\mathrm{{AS}}^*(\text{{{a}}})={X}"))
+
+X = latex(collect(AS_link1,s))
+display(Math(rf"\mathrm{{LG}}_{{\mathrm{{AS}}(1)}}(s,q)={X}"))
+
+X = latex(factor(AS_link1.subs(q,1)))
+display(Math(rf"\mathrm{{LG}}_{{\mathrm{{AS}}(1)}}(s,1)={X}"))
+
+T = get_LT(get_LT(fatgraph,s),q)
+X = latex(join_AB(Matrix([x[0],x[1],x[2]]),T).applyfunc(lambda expr: collect(expr, [x[0],x[1],x[2]])))
+Y = latex(Matrix([x[0],x[1],x[2]]))
+display(Math(rf"{Y}\boxtimes T\sim {X}"))
